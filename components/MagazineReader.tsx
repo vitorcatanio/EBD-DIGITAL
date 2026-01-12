@@ -4,7 +4,8 @@ import ExerciseOverlay from './ExerciseOverlay';
 import AuthoringModal from './AuthoringModal';
 import * as pdfjsLib from 'pdfjs-dist';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.10.38/build/pdf.worker.mjs`;
+// Configuração robusta do Worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 interface MagazineReaderProps {
   magazine: Magazine;
@@ -24,24 +25,35 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
   const [authoringPos, setAuthoringPos] = useState<{ x: number, y: number } | null>(null);
   const [pdfPageImage, setPdfPageImage] = useState<string | null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const pdfDocRef = useRef<any>(null);
 
   const totalPages = magazine.pages.length;
   const currentPage = magazine.pages[currentPageIdx];
 
-  // Carregar o documento PDF uma única vez
   useEffect(() => {
     const loadPdf = async () => {
-      if (magazine.pdfUrl) {
-        const pdf = await pdfjsLib.getDocument(magazine.pdfUrl).promise;
+      if (!magazine.pdfUrl) {
+        setLoadError("URL do PDF não encontrada.");
+        return;
+      }
+      setIsLoadingPage(true);
+      try {
+        console.log("Baixando PDF...");
+        const loadingTask = pdfjsLib.getDocument(magazine.pdfUrl);
+        const pdf = await loadingTask.promise;
         pdfDocRef.current = pdf;
-        renderPage(0);
+        await renderPage(0);
+      } catch (e: any) {
+        console.error("Erro ao carregar PDF:", e);
+        setLoadError("Não foi possível carregar o arquivo PDF. Verifique sua conexão ou se o arquivo existe no Firebase Storage.");
+      } finally {
+        setIsLoadingPage(false);
       }
     };
     loadPdf();
   }, [magazine.pdfUrl]);
 
-  // Renderizar a página atual quando mudar o índice
   useEffect(() => {
     if (pdfDocRef.current) {
       renderPage(currentPageIdx);
@@ -53,18 +65,17 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
     setIsLoadingPage(true);
     try {
       const page = await pdfDocRef.current.getPage(idx + 1);
-      const viewport = page.getViewport({ scale: 2.0 }); // Alta qualidade
+      const viewport = page.getViewport({ scale: 2.0 }); 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       canvas.height = viewport.height;
       canvas.width = viewport.width;
       if (ctx) {
-        // Fix: Added the required 'canvas' property to the render parameters for PDF.js v4+
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+        await page.render({ canvasContext: ctx, viewport }).promise;
         setPdfPageImage(canvas.toDataURL('image/jpeg', 0.8));
       }
     } catch (e) {
-      console.error("Erro ao renderizar página do PDF:", e);
+      console.error("Erro ao renderizar página:", e);
     } finally {
       setIsLoadingPage(false);
     }
@@ -103,9 +114,7 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
 
   return (
     <div className="flex-grow flex bg-slate-100 overflow-hidden relative flex-col md:flex-row">
-      {/* Content Area */}
       <div className={`flex-grow flex flex-col transition-all duration-500 h-full ${showForum ? 'md:mr-[400px]' : ''}`}>
-        {/* Header Toolbar */}
         <div className="bg-white px-4 md:px-6 py-3 border-b border-slate-200 flex items-center justify-between z-50">
           <div className="flex items-center space-x-4 min-w-0">
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button>
@@ -135,46 +144,53 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
           </div>
         </div>
 
-        {/* Reader Viewport */}
         <div className="flex-grow flex items-center justify-center p-4 md:p-8 relative overflow-hidden bg-slate-100">
-          <div 
-            onClick={(e) => {
-              if (editMode) {
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                setAuthoringPos({ x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 });
-              }
-            }}
-            className={`relative w-full h-full max-h-[80vh] md:max-h-[85vh] aspect-[1/1.414] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.2)] bg-white rounded-xl md:rounded-[2.5rem] overflow-hidden ${editMode ? 'cursor-crosshair border-4 border-indigo-500 animate-pulse' : ''}`}
-          >
-            {isLoadingPage ? (
-               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 space-y-4">
-                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Renderizando página...</p>
-               </div>
-            ) : pdfPageImage && (
-              <div key={currentPageIdx} className="w-full h-full relative animate-in fade-in duration-300">
-                <img src={pdfPageImage} className="w-full h-full object-contain pointer-events-none select-none bg-slate-50" />
-                <ExerciseOverlay 
-                  page={currentPage} 
-                  role={user.role === 'editor' ? 'teacher' : user.role} 
-                  userResponses={[]} 
-                  onSave={() => {}} 
-                />
-              </div>
-            )}
-          </div>
+          {loadError ? (
+            <div className="text-center p-10 bg-white rounded-3xl shadow-xl max-w-md">
+               <div className="text-4xl mb-4">⚠️</div>
+               <h3 className="font-black text-slate-800 uppercase mb-2">Erro ao carregar Lição</h3>
+               <p className="text-slate-500 text-xs font-medium leading-relaxed">{loadError}</p>
+               <button onClick={onClose} className="mt-6 bg-indigo-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest">Voltar</button>
+            </div>
+          ) : (
+            <div 
+              onClick={(e) => {
+                if (editMode) {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setAuthoringPos({ x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 });
+                }
+              }}
+              className={`relative w-full h-full max-h-[80vh] md:max-h-[85vh] aspect-[1/1.414] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.2)] bg-white rounded-xl md:rounded-[2.5rem] overflow-hidden ${editMode ? 'cursor-crosshair border-4 border-indigo-500 animate-pulse' : ''}`}
+            >
+              {isLoadingPage ? (
+                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 space-y-4">
+                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Carregando conteúdo...</p>
+                 </div>
+              ) : pdfPageImage && (
+                <div key={currentPageIdx} className="w-full h-full relative animate-in fade-in duration-300">
+                  <img src={pdfPageImage} className="w-full h-full object-contain pointer-events-none select-none bg-slate-50" />
+                  <ExerciseOverlay 
+                    page={currentPage} 
+                    role={user.role === 'editor' ? 'teacher' : user.role} 
+                    userResponses={[]} 
+                    onSave={() => {}} 
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Navigation Controls */}
           <div className="absolute inset-x-0 bottom-10 flex justify-center space-x-12 md:space-x-0 md:contents">
              <button 
-                disabled={currentPageIdx === 0}
+                disabled={currentPageIdx === 0 || isLoadingPage}
                 onClick={() => setCurrentPageIdx(p => p - 1)}
                 className="md:absolute md:left-8 w-14 h-14 rounded-full bg-white/90 backdrop-blur shadow-xl flex items-center justify-center hover:bg-white disabled:opacity-0 transition-all z-40 active:scale-90"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
               </button>
               <button 
-                disabled={currentPageIdx === totalPages - 1}
+                disabled={currentPageIdx === totalPages - 1 || isLoadingPage}
                 onClick={() => setCurrentPageIdx(p => p + 1)}
                 className="md:absolute md:right-8 w-14 h-14 rounded-full bg-white/90 backdrop-blur shadow-xl flex items-center justify-center hover:bg-white disabled:opacity-0 transition-all z-40 active:scale-90"
               >
@@ -183,7 +199,6 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
           </div>
         </div>
 
-        {/* Page Slider */}
         <div className="h-16 flex items-center justify-center px-8 bg-white/50 backdrop-blur-sm">
            <div className="w-full max-w-lg flex items-center space-x-4">
               <span className="text-[10px] font-black text-slate-400">01</span>
@@ -196,7 +211,6 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
         </div>
       </div>
 
-      {/* Forum Sidebar Responsive */}
       <div className={`fixed inset-y-0 right-0 w-full md:w-[400px] bg-white border-l border-slate-200 shadow-2xl z-[100] flex flex-col transition-transform duration-500 ease-in-out ${showForum ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <h3 className="font-black text-slate-800 uppercase tracking-tighter">Fórum da Lição</h3>
