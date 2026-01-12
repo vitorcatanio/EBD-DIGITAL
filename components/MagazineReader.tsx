@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Magazine, User, Comment, UserResponse, Exercise, ExerciseType } from '../types';
 import ExerciseOverlay from './ExerciseOverlay';
@@ -60,7 +59,8 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
       canvas.height = viewport.height;
       canvas.width = viewport.width;
       if (ctx) {
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        // Fix: Added the required 'canvas' property to the render parameters for PDF.js v4+
+        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
         setPdfPageImage(canvas.toDataURL('image/jpeg', 0.8));
       }
     } catch (e) {

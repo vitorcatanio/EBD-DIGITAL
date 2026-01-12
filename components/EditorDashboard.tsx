@@ -1,10 +1,8 @@
-
 import React, { useState, useRef } from 'react';
 import { Class, Magazine, User, Attendance, Page } from '../types';
 import * as pdfjsLib from 'pdfjs-dist';
-import { storage, db } from '../services/firebase';
+import { storage } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, setDoc } from 'firebase/firestore';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.10.38/build/pdf.worker.mjs`;
 
@@ -45,7 +43,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
 
   const handleAddClass = () => {
     if (!newClassName.trim()) return;
-    onAddClass(newClassName);
+    onAddClass(newClassName.trim());
     setNewClassName('');
   };
 
@@ -54,12 +52,10 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
     if (!selectedFile || !newMagTitle || !newMagClassId) return;
     setIsProcessing(true);
     try {
-      // 1. Upload do PDF para o Firebase Storage
       const pdfRef = ref(storage, `magazines/${Date.now()}_${selectedFile.name}`);
       const uploadResult = await uploadBytes(pdfRef, selectedFile);
       const pdfUrl = await getDownloadURL(uploadResult.ref);
 
-      // 2. Processar a primeira página para gerar a capa
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       
@@ -70,17 +66,17 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
       canvas.height = viewport.height;
       canvas.width = viewport.width;
       if (ctx) {
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        // Fix: Added the required 'canvas' property to the render parameters for PDF.js v4+
+        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
       }
       const coverUrl = canvas.toDataURL('image/jpeg', 0.7);
 
-      // 3. Criar a estrutura das páginas (inicialmente vazias ou referenciando o PDF)
       const pages: Page[] = [];
       for (let i = 1; i <= pdf.numPages; i++) {
         pages.push({ 
           id: `p-${i}-${Date.now()}`, 
           pageNumber: i, 
-          imageUrl: '', // Será renderizado no leitor a partir do PDF URL
+          imageUrl: '', 
           exercises: [] 
         });
       }
@@ -91,14 +87,11 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
         title: newMagTitle,
         description: `Publicado em ${new Date().toLocaleDateString()}`,
         coverUrl,
-        pdfUrl, // Guardamos a URL do PDF original
+        pdfUrl, 
         classId: newMagClassId,
         pages
       };
 
-      // 4. Salvar no Firestore
-      await setDoc(doc(db, 'magazines', magId), newMagazine);
-      
       onAddMagazine(newMagazine);
       setIsUploading(false);
       setIsProcessing(false);
@@ -106,7 +99,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
       setSelectedFile(null);
     } catch (err) {
       console.error(err);
-      alert("Erro ao processar e salvar no Firebase");
+      alert("Erro ao processar e salvar arquivo.");
       setIsProcessing(false);
     }
   };
@@ -171,7 +164,9 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                        </div>
                      </td>
                      <td className="hidden sm:table-cell px-8 py-5">
-                        <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[8px] font-black rounded-full uppercase">{m.classId}</span>
+                        <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[8px] font-black rounded-full uppercase">
+                           {classes.find(c => c.id === m.classId)?.name || m.classId}
+                        </span>
                      </td>
                      <td className="px-5 py-4 md:px-8 md:py-5 text-right space-x-2 md:space-x-4">
                        <button onClick={() => onSelectMagazine(m.id)} className="text-indigo-600 font-black text-[9px] md:text-[10px] uppercase hover:underline">Ver</button>
@@ -197,7 +192,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                 </div>
                 <div>
                   <div className="font-black text-slate-800 text-sm leading-tight">{t.name}</div>
-                  <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Professor - Turma: {t.classId}</div>
+                  <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Professor - Turma: {classes.find(c => c.id === t.classId)?.name || t.classId}</div>
                 </div>
               </div>
               <div className="flex space-x-2">
@@ -248,14 +243,12 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                  </button>
                </div>
                <div className="font-black text-slate-800 text-[10px] md:text-sm leading-none truncate">{t.name}</div>
-               <div className="text-[7px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Turma: {t.classId}</div>
+               <div className="text-[7px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Turma: {classes.find(c => c.id === t.classId)?.name || t.classId}</div>
             </div>
           ))}
-          {teachers.length === 0 && <div className="col-span-full py-10 text-center text-slate-300 italic text-xs">Nenhum professor registrado.</div>}
         </div>
       )}
 
-      {/* Modal de Edição de Professor */}
       {editingTeacher && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[500] flex items-center justify-center p-4">
           <form onSubmit={handleSaveTeacherEdit} className="bg-white w-full max-sm rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in duration-300">
@@ -268,10 +261,6 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                 <div>
                    <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Nome Completo</label>
                    <input required type="text" value={editingTeacher.name} onChange={e => setEditingTeacher({...editingTeacher, name: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 ring-indigo-500 font-bold border border-slate-100 text-sm" />
-                </div>
-                <div>
-                   <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Nova Senha</label>
-                   <input type="password" value={editingTeacher.password || ''} onChange={e => setEditingTeacher({...editingTeacher, password: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 ring-indigo-500 font-bold border border-slate-100 text-sm" />
                 </div>
                 <div>
                    <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Turma Responsável</label>
