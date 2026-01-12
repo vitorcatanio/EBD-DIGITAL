@@ -9,7 +9,7 @@ import EditorDashboard from './components/EditorDashboard';
 import Introduction from './components/Introduction';
 import AnnouncementModal from './components/AnnouncementModal';
 import { db, auth } from './services/firebase';
-import { collection, onSnapshot, doc, updateDoc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, setDoc, getDoc, deleteDoc, FirestoreError } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const App: React.FC = () => {
@@ -21,6 +21,7 @@ const App: React.FC = () => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   
   const [selectedMagId, setSelectedMagId] = useState<string | null>(null);
   const [view, setView] = useState<'library' | 'dashboard'>('library');
@@ -45,28 +46,38 @@ const App: React.FC = () => {
       }
     });
 
+    const handleFirestoreError = (err: FirestoreError, context: string) => {
+      console.error(`Erro em ${context}:`, err);
+      if (err.code === 'permission-denied') {
+        setPermissionError("Permissões insuficientes no Firebase. Verifique as 'Rules' no console do Firebase.");
+      }
+    };
+
     const unsubMags = onSnapshot(collection(db, 'magazines'), 
       (snapshot) => {
         const mags = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Magazine[];
         setMagazines(mags);
+        setPermissionError(null);
       },
-      (err) => console.error("Erro snapshot magazines:", err)
+      (err) => handleFirestoreError(err as FirestoreError, "magazines")
     );
 
     const unsubClasses = onSnapshot(collection(db, 'classes'), 
       (snapshot) => {
         const cls = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Class[];
         setClasses(cls);
+        setPermissionError(null);
       },
-      (err) => console.error("Erro snapshot classes:", err)
+      (err) => handleFirestoreError(err as FirestoreError, "classes")
     );
 
     const unsubUsers = onSnapshot(collection(db, 'users'), 
       (snapshot) => {
         const usrList = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as User[];
         setUsers(usrList);
+        setPermissionError(null);
       },
-      (err) => console.error("Erro snapshot users:", err)
+      (err) => handleFirestoreError(err as FirestoreError, "users")
     );
 
     return () => {
@@ -80,8 +91,9 @@ const App: React.FC = () => {
   const handleUpdateUser = async (updatedUser: User) => {
     try {
       await updateDoc(doc(db, 'users', updatedUser.id), { ...updatedUser });
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao atualizar usuário:", e);
+      if (e.code === 'permission-denied') alert("Erro de Permissão: Verifique as regras do Firebase.");
     }
   };
 
@@ -90,9 +102,14 @@ const App: React.FC = () => {
       const id = `c-${Date.now()}`;
       const newClass: Class = { id, name };
       await setDoc(doc(db, 'classes', id), newClass);
-    } catch (err) {
+      alert("Turma criada com sucesso!");
+    } catch (err: any) {
       console.error("Erro ao salvar turma:", err);
-      alert("Erro ao salvar turma no banco de dados.");
+      if (err.code === 'permission-denied') {
+        alert("ERRO DE PERMISSÃO: Você precisa liberar o acesso no Console do Firebase (Firestore > Rules).");
+      } else {
+        alert("Erro ao salvar turma no banco de dados.");
+      }
     }
   };
 
@@ -122,6 +139,12 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-full flex flex-col bg-slate-50 text-slate-900 font-sans overflow-hidden">
+      {permissionError && (
+        <div className="bg-red-600 text-white text-[10px] py-1 px-4 font-black uppercase tracking-widest text-center animate-pulse z-[1000]">
+          ⚠️ {permissionError}
+        </div>
+      )}
+      
       <Navbar 
         user={currentUser} 
         onLogout={() => auth.signOut()} 
