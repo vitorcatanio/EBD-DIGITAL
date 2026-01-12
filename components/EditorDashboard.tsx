@@ -2,6 +2,9 @@
 import React, { useState, useRef } from 'react';
 import { Class, Magazine, User, Attendance, Page } from '../types';
 import * as pdfjsLib from 'pdfjs-dist';
+import { storage, db } from '../services/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { doc, setDoc } from 'firebase/firestore';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.10.38/build/pdf.worker.mjs`;
 
@@ -51,28 +54,59 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
     if (!selectedFile || !newMagTitle || !newMagClassId) return;
     setIsProcessing(true);
     try {
+      // 1. Upload do PDF para o Firebase Storage
+      const pdfRef = ref(storage, `magazines/${Date.now()}_${selectedFile.name}`);
+      const uploadResult = await uploadBytes(pdfRef, selectedFile);
+      const pdfUrl = await getDownloadURL(uploadResult.ref);
+
+      // 2. Processar a primeira página para gerar a capa
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1.0 });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      if (ctx) {
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      }
+      const coverUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+      // 3. Criar a estrutura das páginas (inicialmente vazias ou referenciando o PDF)
       const pages: Page[] = [];
       for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 1.5 });
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        if (ctx) {
-          await page.render({ canvasContext: ctx, viewport }).promise;
-          pages.push({ id: `p-${i}-${Date.now()}`, pageNumber: i, imageUrl: canvas.toDataURL('image/jpeg', 0.8), exercises: [] });
-        }
+        pages.push({ 
+          id: `p-${i}-${Date.now()}`, 
+          pageNumber: i, 
+          imageUrl: '', // Será renderizado no leitor a partir do PDF URL
+          exercises: [] 
+        });
       }
-      onAddMagazine({ id: `mag-${Date.now()}`, title: newMagTitle, description: `PDF processado em ${new Date().toLocaleDateString()}`, coverUrl: pages[0]?.imageUrl || '', classId: newMagClassId, pages });
+
+      const magId = `mag-${Date.now()}`;
+      const newMagazine: Magazine = {
+        id: magId,
+        title: newMagTitle,
+        description: `Publicado em ${new Date().toLocaleDateString()}`,
+        coverUrl,
+        pdfUrl, // Guardamos a URL do PDF original
+        classId: newMagClassId,
+        pages
+      };
+
+      // 4. Salvar no Firestore
+      await setDoc(doc(db, 'magazines', magId), newMagazine);
+      
+      onAddMagazine(newMagazine);
       setIsUploading(false);
       setIsProcessing(false);
       setNewMagTitle('');
       setSelectedFile(null);
     } catch (err) {
-      alert("Erro ao processar PDF");
+      console.error(err);
+      alert("Erro ao processar e salvar no Firebase");
       setIsProcessing(false);
     }
   };
@@ -224,7 +258,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
       {/* Modal de Edição de Professor */}
       {editingTeacher && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[500] flex items-center justify-center p-4">
-          <form onSubmit={handleSaveTeacherEdit} className="bg-white w-full max-w-sm rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in duration-300">
+          <form onSubmit={handleSaveTeacherEdit} className="bg-white w-full max-sm rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in duration-300">
              <div className="flex justify-between items-center">
                 <h3 className="font-black text-slate-800 uppercase tracking-tighter">Editar Professor</h3>
                 <button type="button" onClick={() => setEditingTeacher(null)} className="text-slate-300 hover:text-slate-900"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg></button>

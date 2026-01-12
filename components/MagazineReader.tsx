@@ -1,8 +1,11 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Magazine, User, Comment, UserResponse, Exercise, ExerciseType } from '../types';
 import ExerciseOverlay from './ExerciseOverlay';
 import AuthoringModal from './AuthoringModal';
+import * as pdfjsLib from 'pdfjs-dist';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.10.38/build/pdf.worker.mjs`;
 
 interface MagazineReaderProps {
   magazine: Magazine;
@@ -20,9 +23,52 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
   const [newComment, setNewComment] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [authoringPos, setAuthoringPos] = useState<{ x: number, y: number } | null>(null);
+  const [pdfPageImage, setPdfPageImage] = useState<string | null>(null);
+  const [isLoadingPage, setIsLoadingPage] = useState(false);
+  const pdfDocRef = useRef<any>(null);
 
   const totalPages = magazine.pages.length;
   const currentPage = magazine.pages[currentPageIdx];
+
+  // Carregar o documento PDF uma única vez
+  useEffect(() => {
+    const loadPdf = async () => {
+      if (magazine.pdfUrl) {
+        const pdf = await pdfjsLib.getDocument(magazine.pdfUrl).promise;
+        pdfDocRef.current = pdf;
+        renderPage(0);
+      }
+    };
+    loadPdf();
+  }, [magazine.pdfUrl]);
+
+  // Renderizar a página atual quando mudar o índice
+  useEffect(() => {
+    if (pdfDocRef.current) {
+      renderPage(currentPageIdx);
+    }
+  }, [currentPageIdx]);
+
+  const renderPage = async (idx: number) => {
+    if (!pdfDocRef.current) return;
+    setIsLoadingPage(true);
+    try {
+      const page = await pdfDocRef.current.getPage(idx + 1);
+      const viewport = page.getViewport({ scale: 2.0 }); // Alta qualidade
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      if (ctx) {
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        setPdfPageImage(canvas.toDataURL('image/jpeg', 0.8));
+      }
+    } catch (e) {
+      console.error("Erro ao renderizar página do PDF:", e);
+    } finally {
+      setIsLoadingPage(false);
+    }
+  };
 
   const handlePostComment = () => {
     if (!newComment.trim()) return;
@@ -100,9 +146,14 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
             }}
             className={`relative w-full h-full max-h-[80vh] md:max-h-[85vh] aspect-[1/1.414] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.2)] bg-white rounded-xl md:rounded-[2.5rem] overflow-hidden ${editMode ? 'cursor-crosshair border-4 border-indigo-500 animate-pulse' : ''}`}
           >
-            {currentPage && (
-              <div key={currentPageIdx} className="w-full h-full relative animate-in fade-in zoom-in-95 duration-500">
-                <img src={currentPage.imageUrl} className="w-full h-full object-contain pointer-events-none select-none bg-slate-50" />
+            {isLoadingPage ? (
+               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 space-y-4">
+                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Renderizando página...</p>
+               </div>
+            ) : pdfPageImage && (
+              <div key={currentPageIdx} className="w-full h-full relative animate-in fade-in duration-300">
+                <img src={pdfPageImage} className="w-full h-full object-contain pointer-events-none select-none bg-slate-50" />
                 <ExerciseOverlay 
                   page={currentPage} 
                   role={user.role === 'editor' ? 'teacher' : user.role} 
