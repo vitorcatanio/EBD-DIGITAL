@@ -9,7 +9,7 @@ import EditorDashboard from './components/EditorDashboard';
 import Introduction from './components/Introduction';
 import AnnouncementModal from './components/AnnouncementModal';
 import { db, auth } from './services/firebase';
-import { collection, onSnapshot, doc, updateDoc, setDoc, getDoc, deleteDoc, FirestoreError } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, FirestoreError } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const App: React.FC = () => {
@@ -88,12 +88,15 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // CRUCIAL: setDoc com { merge: true } funciona para criar (cadastro) e atualizar (aprovação)
   const handleUpdateUser = async (updatedUser: User) => {
     try {
-      await updateDoc(doc(db, 'users', updatedUser.id), { ...updatedUser });
+      await setDoc(doc(db, 'users', updatedUser.id), { ...updatedUser }, { merge: true });
     } catch (e: any) {
-      console.error("Erro ao atualizar usuário:", e);
-      if (e.code === 'permission-denied') alert("Erro de Permissão ao atualizar perfil.");
+      console.error("Erro ao salvar/atualizar usuário:", e);
+      if (e.code === 'permission-denied') {
+        alert("ERRO DE PERMISSÃO: O Firebase bloqueou a gravação. Verifique suas Rules.");
+      }
     }
   };
 
@@ -107,8 +110,6 @@ const App: React.FC = () => {
       console.error("Erro ao salvar turma:", err);
       if (err.code === 'permission-denied') {
         alert("ERRO DE PERMISSÃO: O Firebase bloqueou a gravação. Altere as regras (Rules) para 'allow read, write: if true;'.");
-      } else {
-        alert("Erro ao salvar turma: " + err.message);
       }
     }
   };
@@ -132,7 +133,7 @@ const App: React.FC = () => {
   if (showIntro) return <Introduction onComplete={() => setShowIntro(false)} />;
 
   if (!currentUser) {
-    return <Login onLogin={setCurrentUser} onRegister={(u) => handleUpdateUser(u)} users={users} classes={classes} />;
+    return <Login onLogin={setCurrentUser} onRegister={handleUpdateUser} users={users} classes={classes} />;
   }
 
   const activeMag = magazines.find(m => m.id === selectedMagId);
@@ -177,7 +178,7 @@ const App: React.FC = () => {
               onDeleteComment={(id) => setComments(prev => prev.filter(c => c.id !== id))}
               onClose={() => setSelectedMagId(null)}
               onUpdateMagazine={async (updated) => {
-                await updateDoc(doc(db, 'magazines', updated.id), { ...updated });
+                await setDoc(doc(db, 'magazines', updated.id), { ...updated }, { merge: true });
               }}
             />
           ) : view === 'dashboard' ? (
@@ -202,10 +203,10 @@ const App: React.FC = () => {
                 classes={classes}
                 onAddClass={handleAddClass}
                 onDeleteClass={(id) => deleteDoc(doc(db, 'classes', id))}
-                onUpdateClass={(id, name) => updateDoc(doc(db, 'classes', id), { name })}
+                onUpdateClass={(id, name) => setDoc(doc(db, 'classes', id), { name }, { merge: true })}
                 onAddMagazine={handleAddMagazine}
                 onUpdateMagazine={async (updated) => {
-                  await updateDoc(doc(db, 'magazines', updated.id), { ...updated });
+                  await setDoc(doc(db, 'magazines', updated.id), { ...updated }, { merge: true });
                 }}
                 magazines={magazines}
                 onDeleteMagazine={(id) => deleteDoc(doc(db, 'magazines', id))}
