@@ -49,7 +49,7 @@ const App: React.FC = () => {
     const handleFirestoreError = (err: FirestoreError, context: string) => {
       console.error(`Erro em ${context}:`, err);
       if (err.code === 'permission-denied') {
-        setPermissionError("Permissões insuficientes no Firebase. Verifique as 'Rules' no console do Firebase.");
+        setPermissionError(`Acesso bloqueado ao banco (${context}). Verifique as 'Rules' no Console do Firebase.`);
       }
     };
 
@@ -59,7 +59,7 @@ const App: React.FC = () => {
         setMagazines(mags);
         setPermissionError(null);
       },
-      (err) => handleFirestoreError(err as FirestoreError, "magazines")
+      (err) => handleFirestoreError(err as FirestoreError, "revistas")
     );
 
     const unsubClasses = onSnapshot(collection(db, 'classes'), 
@@ -68,7 +68,7 @@ const App: React.FC = () => {
         setClasses(cls);
         setPermissionError(null);
       },
-      (err) => handleFirestoreError(err as FirestoreError, "classes")
+      (err) => handleFirestoreError(err as FirestoreError, "turmas")
     );
 
     const unsubUsers = onSnapshot(collection(db, 'users'), 
@@ -77,7 +77,7 @@ const App: React.FC = () => {
         setUsers(usrList);
         setPermissionError(null);
       },
-      (err) => handleFirestoreError(err as FirestoreError, "users")
+      (err) => handleFirestoreError(err as FirestoreError, "usuários")
     );
 
     return () => {
@@ -93,7 +93,7 @@ const App: React.FC = () => {
       await updateDoc(doc(db, 'users', updatedUser.id), { ...updatedUser });
     } catch (e: any) {
       console.error("Erro ao atualizar usuário:", e);
-      if (e.code === 'permission-denied') alert("Erro de Permissão: Verifique as regras do Firebase.");
+      if (e.code === 'permission-denied') alert("Erro de Permissão ao atualizar perfil.");
     }
   };
 
@@ -102,13 +102,13 @@ const App: React.FC = () => {
       const id = `c-${Date.now()}`;
       const newClass: Class = { id, name };
       await setDoc(doc(db, 'classes', id), newClass);
-      alert("Turma criada com sucesso!");
+      alert("Turma '" + name + "' criada com sucesso!");
     } catch (err: any) {
       console.error("Erro ao salvar turma:", err);
       if (err.code === 'permission-denied') {
-        alert("ERRO DE PERMISSÃO: Você precisa liberar o acesso no Console do Firebase (Firestore > Rules).");
+        alert("ERRO DE PERMISSÃO: O Firebase bloqueou a gravação. Altere as regras (Rules) para 'allow read, write: if true;'.");
       } else {
-        alert("Erro ao salvar turma no banco de dados.");
+        alert("Erro ao salvar turma: " + err.message);
       }
     }
   };
@@ -140,8 +140,8 @@ const App: React.FC = () => {
   return (
     <div className="h-screen w-full flex flex-col bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {permissionError && (
-        <div className="bg-red-600 text-white text-[10px] py-1 px-4 font-black uppercase tracking-widest text-center animate-pulse z-[1000]">
-          ⚠️ {permissionError}
+        <div className="bg-red-600 text-white text-[10px] py-2 px-4 font-black uppercase tracking-widest text-center animate-pulse z-[1000] shadow-lg">
+          ⚠️ ERRO DE CONFIGURAÇÃO: {permissionError}
         </div>
       )}
       
