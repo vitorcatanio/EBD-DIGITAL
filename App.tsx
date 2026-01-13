@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Class, Magazine, Comment, Attendance, Announcement } from './types';
+import { User, Class, Magazine, Comment, Attendance, Announcement, UserResponse } from './types';
 import Login from './components/Login';
 import Navbar from './components/Navbar';
 import Library from './components/Library';
@@ -10,7 +10,7 @@ import EditorDashboard from './components/EditorDashboard';
 import Introduction from './components/Introduction';
 import AnnouncementModal from './components/AnnouncementModal';
 import { db, auth } from './services/firebase';
-import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, FirestoreError } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, FirestoreError, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const App: React.FC = () => {
@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [userResponses, setUserResponses] = useState<UserResponse[]>([]);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   
   const [selectedMagId, setSelectedMagId] = useState<string | null>(null);
@@ -50,95 +51,82 @@ const App: React.FC = () => {
     const handleFirestoreError = (err: FirestoreError, context: string) => {
       console.error(`Erro em ${context}:`, err);
       if (err.code === 'permission-denied') {
-        setPermissionError(`Acesso bloqueado ao banco (${context}). Verifique as 'Rules' no Console do Firebase.`);
+        setPermissionError(`Acesso bloqueado (${context}). Verifique as regras do Firebase.`);
       }
     };
 
-    const unsubMags = onSnapshot(collection(db, 'magazines'), 
-      (snapshot) => {
-        const mags = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Magazine[];
-        setMagazines(mags);
-        setPermissionError(null);
-      },
-      (err) => handleFirestoreError(err as FirestoreError, "revistas")
-    );
+    const unsubMags = onSnapshot(collection(db, 'magazines'), (snapshot) => {
+      setMagazines(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Magazine[]);
+    });
 
-    const unsubClasses = onSnapshot(collection(db, 'classes'), 
-      (snapshot) => {
-        const cls = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Class[];
-        setClasses(cls);
-        setPermissionError(null);
-      },
-      (err) => handleFirestoreError(err as FirestoreError, "turmas")
-    );
+    const unsubClasses = onSnapshot(collection(db, 'classes'), (snapshot) => {
+      setClasses(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Class[]);
+    });
 
-    const unsubUsers = onSnapshot(collection(db, 'users'), 
-      (snapshot) => {
-        const usrList = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as User[];
-        setUsers(usrList);
-        setPermissionError(null);
-      },
-      (err) => handleFirestoreError(err as FirestoreError, "usuários")
-    );
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as User[]);
+    });
+
+    const unsubResponses = onSnapshot(collection(db, 'responses'), (snapshot) => {
+      setUserResponses(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as UserResponse[]);
+    });
+
+    // Added Firestore listener for announcements
+    const unsubAnnouncements = onSnapshot(collection(db, 'announcements'), (snapshot) => {
+      setAnnouncements(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Announcement[]);
+    });
+
+    // Added Firestore listener for attendances
+    const unsubAttendances = onSnapshot(collection(db, 'attendances'), (snapshot) => {
+      setAttendances(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Attendance[]);
+    });
 
     return () => {
       unsubAuth();
       unsubMags();
       unsubClasses();
       unsubUsers();
+      unsubResponses();
+      unsubAnnouncements();
+      unsubAttendances();
     };
   }, []);
 
   const handleUpdateUser = async (updatedUser: User) => {
-    try {
-      await setDoc(doc(db, 'users', updatedUser.id), { ...updatedUser }, { merge: true });
-    } catch (e: any) {
-      console.error("Erro ao salvar/atualizar usuário:", e);
-    }
+    await setDoc(doc(db, 'users', updatedUser.id), updatedUser, { merge: true });
   };
 
-  const handleAddClass = async (name: string) => {
-    try {
-      const id = `c-${Date.now()}`;
-      const newClass: Class = { id, name };
-      await setDoc(doc(db, 'classes', id), newClass);
-    } catch (err: any) {
-      console.error("Erro ao salvar turma:", err);
-    }
+  const handleSaveResponse = async (resp: UserResponse) => {
+    await setDoc(doc(db, 'responses', resp.id), resp);
   };
 
-  const handleAddMagazine = async (m: Magazine) => {
-    try {
-      await setDoc(doc(db, 'magazines', m.id), m);
-    } catch (err) {
-      console.error("Erro ao salvar revista:", err);
-    }
+  // Fix: Added handleAddAnnouncement to handle announcement creation
+  const handleAddAnnouncement = async (ann: Announcement) => {
+    await setDoc(doc(db, 'announcements', ann.id), ann);
   };
 
-  const handleAddAnnouncement = async (a: Announcement) => {
-    try {
-      await setDoc(doc(db, 'announcements', a.id), a);
-    } catch (err) {
-      console.error("Erro ao salvar aviso:", err);
-    }
+  // Fix: Added handleToggleAttendance to handle attendance recording
+  const handleToggleAttendance = async (studentId: string, studentName: string, classId: string, isPresent: boolean) => {
+    const today = new Date().toISOString().split('T')[0];
+    const id = `att-${classId}-${studentId}-${today}`;
+    const attendance: Attendance = {
+      id,
+      classId,
+      userId: studentId,
+      userName: studentName,
+      date: today,
+      isPresent
+    };
+    await setDoc(doc(db, 'attendances', id), attendance);
   };
 
   if (showIntro) return <Introduction onComplete={() => setShowIntro(false)} />;
-
-  if (!currentUser) {
-    return <Login onLogin={setCurrentUser} onRegister={handleUpdateUser} users={users} classes={classes} />;
-  }
+  if (!currentUser) return <Login onLogin={setCurrentUser} onRegister={handleUpdateUser} users={users} classes={classes} />;
 
   const activeMag = magazines.find(m => m.id === selectedMagId);
 
   return (
     <div className="h-screen w-full flex flex-col bg-slate-50 text-slate-900 font-sans overflow-hidden">
-      {permissionError && (
-        <div className="bg-red-600 text-white text-[10px] py-2 px-4 font-black uppercase tracking-widest text-center animate-pulse z-[1000] shadow-lg">
-          ⚠️ ERRO DE CONFIGURAÇÃO: {permissionError}
-        </div>
-      )}
-      
       <Navbar 
         user={currentUser} 
         onLogout={() => auth.signOut()} 
@@ -148,28 +136,15 @@ const App: React.FC = () => {
       />
       
       <main className="flex-grow relative overflow-hidden flex flex-col">
-        {currentUser.role === 'student' && announcements.find(a => a.classId === currentUser.classId && !currentUser.viewedAnnouncements?.includes(a.id)) && (
-          <AnnouncementModal 
-            announcement={announcements.find(a => a.classId === currentUser.classId && !currentUser.viewedAnnouncements?.includes(a.id))!} 
-            onRead={(id) => {
-              const updatedUser = {
-                ...currentUser,
-                viewedAnnouncements: [...(currentUser.viewedAnnouncements || []), id]
-              };
-              handleUpdateUser(updatedUser);
-            }} 
-          />
-        )}
-
-        {/* Container principal ajustado para flex-col e h-full quando o leitor está aberto */}
         <div className={`flex-grow ${selectedMagId ? 'h-full flex flex-col' : 'overflow-y-auto no-scrollbar'}`}>
           {selectedMagId && activeMag ? (
             <MagazineReader 
               magazine={activeMag} 
               user={currentUser}
               comments={comments.filter(c => c.magazineId === activeMag.id)}
+              userResponses={userResponses.filter(r => r.magazineId === activeMag.id)}
               onAddComment={(c) => setComments(prev => [c, ...prev])}
-              onDeleteComment={(id) => setComments(prev => prev.filter(c => c.id !== id))}
+              onSaveResponse={handleSaveResponse}
               onClose={() => setSelectedMagId(null)}
               onUpdateMagazine={async (updated) => {
                 await setDoc(doc(db, 'magazines', updated.id), { ...updated }, { merge: true });
@@ -183,36 +158,37 @@ const App: React.FC = () => {
                 classes={classes}
                 attendances={attendances}
                 announcements={announcements.filter(a => a.classId === currentUser.classId)}
+                responses={userResponses}
+                magazines={magazines.filter(m => m.classId === currentUser.classId)}
                 onAddAnnouncement={handleAddAnnouncement}
-                onToggleAttendance={(studentId, studentName, classId, isPresent) => {
-                  const today = new Date().toISOString().split('T')[0];
-                  setAttendances(prev => [...prev.filter(a => !(a.userId === studentId && a.date === today)), { id: `att-${Date.now()}`, classId, userId: studentId, userName: studentName, date: today, isPresent }]);
-                }}
+                onToggleAttendance={handleToggleAttendance}
                 onApproveStudent={(id) => handleUpdateUser({ ...users.find(u => u.id === id)!, isApproved: true } as User)}
                 onRejectStudent={(id) => deleteDoc(doc(db, 'users', id))}
                 onUpdateUser={handleUpdateUser}
               />
-            ) : currentUser.role === 'editor' ? (
+            ) : (
+              /* Fix: Provided full implementation for EditorDashboard props */
               <EditorDashboard 
                 classes={classes}
-                onAddClass={handleAddClass}
-                onDeleteClass={(id) => deleteDoc(doc(db, 'classes', id))}
-                onUpdateClass={(id, name) => setDoc(doc(db, 'classes', id), { name }, { merge: true })}
-                onAddMagazine={handleAddMagazine}
-                onUpdateMagazine={async (updated) => {
-                  await setDoc(doc(db, 'magazines', updated.id), { ...updated }, { merge: true });
+                onAddClass={async (name) => {
+                  const id = `class-${Date.now()}`;
+                  await setDoc(doc(db, 'classes', id), { id, name });
                 }}
+                onDeleteClass={async (id) => await deleteDoc(doc(db, 'classes', id))}
+                onUpdateClass={async (id, name) => await setDoc(doc(db, 'classes', id), { name }, { merge: true })}
                 magazines={magazines}
-                onDeleteMagazine={(id) => deleteDoc(doc(db, 'magazines', id))}
+                onAddMagazine={async (m) => await setDoc(doc(db, 'magazines', m.id), m)}
+                onUpdateMagazine={async (m) => await setDoc(doc(db, 'magazines', m.id), m, { merge: true })}
+                onDeleteMagazine={async (id) => await deleteDoc(doc(db, 'magazines', id))}
                 onSelectMagazine={(id) => { setSelectedMagId(id); setView('library'); }}
                 pendingTeachers={users.filter(u => u.role === 'teacher' && !u.isApproved)}
                 onApproveTeacher={(id) => handleUpdateUser({ ...users.find(u => u.id === id)!, isApproved: true } as User)}
                 onRejectTeacher={(id) => deleteDoc(doc(db, 'users', id))}
                 attendances={attendances}
                 onUpdateUser={handleUpdateUser}
-                teachers={users.filter(u => u.role === 'teacher' && u.isApproved)}
+                teachers={users.filter(u => u.role === 'teacher')}
               />
-            ) : null
+            ) 
           ) : (
             <Library magazines={magazines.filter(m => currentUser.role === 'editor' || m.classId === currentUser.classId)} onSelect={setSelectedMagId} user={currentUser} />
           )}

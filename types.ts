@@ -5,7 +5,8 @@ export enum ExerciseType {
   MULTIPLE_CHOICE = 'mcq',
   FREE_TEXT = 'text',
   DRAWING = 'drawing',
-  HYPERLINK = 'link'
+  HYPERLINK = 'link',
+  CHECKBOXES = 'checkboxes'
 }
 
 export interface Class {
@@ -20,7 +21,7 @@ export interface User {
   role: UserRole;
   classId?: string;
   isApproved: boolean;
-  profilePicture?: string; // Base64 da imagem de perfil
+  profilePicture?: string;
   viewedAnnouncements?: string[];
 }
 
@@ -38,7 +39,7 @@ export interface Comment {
   magazineId: string;
   userId: string;
   userName: string;
-  userAvatar?: string; // Foto do usuário no momento do comentário
+  userAvatar?: string;
   text: string;
   timestamp: number;
 }
@@ -57,9 +58,11 @@ export interface Exercise {
   type: ExerciseType;
   question: string;
   options?: string[];
+  correctAnswers?: string[]; // Para validação automática em MCQ e Checkboxes
   url?: string;
   x: number;
   y: number;
+  createdAt?: number;
 }
 
 export interface Page {
@@ -77,10 +80,15 @@ export interface Magazine {
   pages: Page[];
   pdfUrl?: string;
   classId: string;
+  lastExerciseAddedAt?: number;
 }
 
 export interface UserResponse {
+  id: string;
+  magazineId: string;
   exerciseId: string;
+  userId: string;
+  userName: string;
   answer: any;
   timestamp: number;
 }

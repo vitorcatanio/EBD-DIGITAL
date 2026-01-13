@@ -17,107 +17,63 @@ const AuthoringModal: React.FC<AuthoringModalProps> = ({ isOpen, onClose, onSave
   if (!isOpen) return null;
 
   const handleSave = () => {
-    if (type === ExerciseType.HYPERLINK) {
-      onSave({ type, question, url });
-    } else if (type === ExerciseType.MULTIPLE_CHOICE) {
-      onSave({ type, question, options: options.filter(o => o.trim() !== '') });
-    } else {
-      onSave({ type, question });
-    }
-    // Reset fields
+    onSave({ 
+      type, 
+      question, 
+      options: (type === ExerciseType.MULTIPLE_CHOICE || type === ExerciseType.CHECKBOXES) ? options.filter(o => o.trim() !== '') : undefined,
+      url: type === ExerciseType.HYPERLINK ? url : undefined,
+      createdAt: Date.now()
+    });
+    onClose();
     setQuestion('');
     setOptions(['', '', '']);
     setUrl('');
   };
 
   return (
-    <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-      <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in duration-300">
-        <div className="bg-purple-600 p-6 text-white flex justify-between items-center">
-          <h2 className="text-xl font-bold">Nova Interação</h2>
-          <button onClick={onClose} className="hover:rotate-90 transition-transform">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-center justify-center p-6">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+        <div className="bg-indigo-600 p-8 text-white flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-black tracking-tighter uppercase">Criar Questão</h2>
+            <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mt-1">Ferramenta Pedagógica</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
 
         <div className="p-8 space-y-6">
-          <div>
-            <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Tipo de Interação</label>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: ExerciseType.MULTIPLE_CHOICE, label: 'Múltipla Escolha' },
-                { id: ExerciseType.FREE_TEXT, label: 'Dissertativa' },
-                { id: ExerciseType.DRAWING, label: 'Desenho' },
-                { id: ExerciseType.HYPERLINK, label: 'Hiperlink' }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setType(t.id)}
-                  className={`py-3 px-4 rounded-xl border-2 font-bold text-sm transition-all ${type === t.id ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-stone-100 text-stone-500 hover:border-stone-200'}`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+             {[
+               { id: ExerciseType.MULTIPLE_CHOICE, label: 'Múltipla Escolha' },
+               { id: ExerciseType.CHECKBOXES, label: 'Assinalar' },
+               { id: ExerciseType.FREE_TEXT, label: 'Dissertativa' },
+               { id: ExerciseType.HYPERLINK, label: 'Link Externo' }
+             ].map(t => (
+               <button key={t.id} onClick={() => setType(t.id)} className={`py-3 px-4 rounded-xl border-2 font-bold text-[10px] uppercase tracking-widest transition-all ${type === t.id ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-50 text-slate-400 hover:border-slate-100'}`}>{t.label}</button>
+             ))}
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Título / Pergunta</label>
-            <input 
-              type="text" 
-              value={question} 
-              onChange={e => setQuestion(e.target.value)}
-              className="w-full p-3 rounded-xl border-2 border-stone-100 focus:border-purple-500 focus:outline-none"
-              placeholder={type === ExerciseType.HYPERLINK ? "Título do link" : "Qual a pergunta?"}
-            />
+          <div className="space-y-4">
+             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Enunciado</label>
+             <input type="text" value={question} onChange={e => setQuestion(e.target.value)} className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 ring-indigo-500 font-bold border border-slate-100 text-sm" placeholder="O que você quer perguntar?" />
           </div>
 
-          {type === ExerciseType.MULTIPLE_CHOICE && (
+          {(type === ExerciseType.MULTIPLE_CHOICE || type === ExerciseType.CHECKBOXES) && (
             <div className="space-y-3">
-              <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Opções de Resposta</label>
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Opções de Resposta</label>
               {options.map((opt, i) => (
-                <input 
-                  key={i}
-                  type="text"
-                  value={opt}
-                  onChange={e => {
-                    const newOpts = [...options];
-                    newOpts[i] = e.target.value;
-                    setOptions(newOpts);
-                  }}
-                  className="w-full p-3 rounded-xl border border-stone-100 focus:border-purple-300 focus:outline-none text-sm"
-                  placeholder={`Opção ${i + 1}`}
-                />
+                <div key={i} className="flex space-x-2">
+                   <input type="text" value={opt} onChange={e => {
+                     const n = [...options]; n[i] = e.target.value; setOptions(n);
+                   }} className="flex-grow p-3 bg-slate-50 rounded-xl outline-none text-xs font-bold border border-slate-100" placeholder={`Opção ${i+1}`} />
+                   {options.length > 2 && <button onClick={() => setOptions(options.filter((_, idx) => idx !== i))} className="p-3 text-red-300 hover:text-red-500">×</button>}
+                </div>
               ))}
-              <button 
-                onClick={() => setOptions([...options, ''])}
-                className="text-purple-600 text-xs font-bold hover:underline"
-              >
-                + Adicionar Opção
-              </button>
+              <button onClick={() => setOptions([...options, ''])} className="text-indigo-600 text-[10px] font-black uppercase tracking-widest">+ Adicionar Opção</button>
             </div>
           )}
 
-          {type === ExerciseType.HYPERLINK && (
-            <div>
-              <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">URL Destino</label>
-              <input 
-                type="url" 
-                value={url} 
-                onChange={e => setUrl(e.target.value)}
-                className="w-full p-3 rounded-xl border-2 border-stone-100 focus:border-purple-500 focus:outline-none"
-                placeholder="https://exemplo.com"
-              />
-            </div>
-          )}
-
-          <button 
-            onClick={handleSave}
-            disabled={!question || (type === ExerciseType.HYPERLINK && !url)}
-            className="w-full bg-purple-600 text-white py-4 rounded-2xl font-bold hover:bg-purple-700 disabled:opacity-50 transition-all shadow-xl shadow-purple-200"
-          >
-            Salvar Interação na Página
-          </button>
+          <button onClick={handleSave} disabled={!question} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-100 active:scale-95 transition-all">Inserir na Lição</button>
         </div>
       </div>
     </div>
