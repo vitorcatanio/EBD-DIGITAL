@@ -30,14 +30,13 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
   const totalPages = magazine.pages.length;
   const currentPage = magazine.pages[currentPageIdx];
 
-  // Detectar se é um link do Google Drive para formatar o Iframe
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
     if (url.includes('drive.google.com')) {
       const id = url.match(/\/d\/([^/]+)/)?.[1] || url.match(/id=([^&]+)/)?.[1];
-      return `https://drive.google.com/file/d/${id}/preview`;
+      // Adicionando parâmetros para forçar a visualização limpa e zoom adequado
+      return `https://drive.google.com/file/d/${id}/preview?rm=minimal`;
     }
-    // Para outros PDFs, usa o visualizador do Google Docs como bridge
     return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
   };
 
@@ -47,14 +46,13 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
       
       setIsLoadingPage(true);
       try {
-        // Tenta carregar via PDF.js (permite interações e overlays)
         const loadingTask = pdfjsLib.getDocument(magazine.pdfUrl);
         const pdf = await loadingTask.promise;
         pdfDocRef.current = pdf;
         await renderPage(0);
         setUseIframeMode(false);
       } catch (e: any) {
-        console.warn("Bloqueio de CORS ou erro de estrutura. Mudando para modo Iframe...");
+        console.warn("Utilizando modo Iframe para visualização externa.");
         setUseIframeMode(true);
       } finally {
         setIsLoadingPage(false);
@@ -125,13 +123,13 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
     <div className="flex-grow flex bg-slate-100 overflow-hidden relative flex-col md:flex-row">
       <div className={`flex-grow flex flex-col transition-all duration-500 h-full ${showForum ? 'md:mr-[400px]' : ''}`}>
         {/* Header */}
-        <div className="bg-white px-4 md:px-6 py-3 border-b border-slate-200 flex items-center justify-between z-50">
+        <div className="bg-white/95 backdrop-blur-sm px-4 md:px-6 py-3 border-b border-slate-200 flex items-center justify-between z-50">
           <div className="flex items-center space-x-4 min-w-0">
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button>
             <div className="truncate">
-              <h2 className="font-black text-slate-800 tracking-tight leading-none mb-1 truncate text-sm md:text-base">{magazine.title}</h2>
+              <h2 className="font-black text-slate-800 tracking-tight leading-none mb-1 truncate text-sm md:text-base uppercase">{magazine.title}</h2>
               <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {useIframeMode ? 'Modo Visualizador Externo' : `Página ${currentPageIdx + 1} / ${totalPages}`}
+                {useIframeMode ? 'Visualizador Direto' : `Página ${currentPageIdx + 1} / ${totalPages}`}
               </p>
             </div>
           </div>
@@ -142,13 +140,13 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
                 onClick={() => setEditMode(!editMode)}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${editMode ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-indigo-600'}`}
                >
-                 {editMode ? 'SALVAR' : 'ADICIONAR PERGUNTA'}
+                 {editMode ? 'SALVAR' : 'INTERATIVIDADE'}
                </button>
              )}
 
              <button 
               onClick={() => setShowForum(!showForum)}
-              className={`p-2 rounded-lg transition-all relative ${showForum ? 'bg-indigo-100 text-indigo-600' : 'bg-white border text-slate-400'}`}
+              className={`p-2 rounded-lg transition-all relative ${showForum ? 'bg-indigo-600 text-white' : 'bg-white border text-slate-400 hover:text-indigo-600'}`}
              >
                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
              </button>
@@ -156,9 +154,9 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
         </div>
 
         {/* Área do PDF */}
-        <div className="flex-grow flex items-center justify-center p-2 md:p-8 relative overflow-hidden bg-slate-200/50">
+        <div className="flex-grow flex items-center justify-center p-0 md:p-6 lg:p-10 relative overflow-hidden bg-slate-200">
           {useIframeMode ? (
-            <div className="w-full h-full max-w-5xl bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in">
+            <div className="w-full h-full max-w-4xl bg-white shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] md:rounded-[2rem] overflow-hidden border border-slate-300 animate-in fade-in zoom-in">
               <iframe 
                 src={getEmbedUrl(magazine.pdfUrl || '')} 
                 className="w-full h-full border-none"
@@ -174,12 +172,12 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
                   setAuthoringPos({ x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 });
                 }
               }}
-              className={`relative w-full h-full max-h-[85vh] aspect-[1/1.414] shadow-2xl bg-white rounded-xl md:rounded-[2rem] overflow-hidden ${editMode ? 'cursor-crosshair border-4 border-indigo-500 ring-8 ring-indigo-500/20' : ''}`}
+              className={`relative w-full h-full max-h-[90vh] aspect-[1/1.414] shadow-2xl bg-white rounded-xl md:rounded-[2rem] overflow-hidden ${editMode ? 'cursor-crosshair border-4 border-indigo-500 ring-8 ring-indigo-500/20' : ''}`}
             >
               {isLoadingPage ? (
                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 space-y-4">
                     <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Sincronizando...</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Carregando...</p>
                  </div>
               ) : pdfPageImage ? (
                 <div key={currentPageIdx} className="w-full h-full relative animate-in fade-in duration-500">
@@ -248,6 +246,7 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
               <p className="text-slate-700 text-sm p-4 bg-slate-50 rounded-2xl border border-slate-100">{c.text}</p>
             </div>
           ))}
+          {comments.length === 0 && <p className="text-center py-10 text-slate-300 text-xs italic">Nenhum comentário ainda. Seja o primeiro!</p>}
         </div>
 
         <div className="p-6 border-t bg-white">
@@ -261,7 +260,7 @@ const MagazineReader: React.FC<MagazineReaderProps> = ({ magazine, user, comment
             onClick={handlePostComment} disabled={!newComment.trim()}
             className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 uppercase tracking-widest text-[10px]"
           >
-            ENVIAR
+            ENVIAR COMENTÁRIO
           </button>
         </div>
       </div>
