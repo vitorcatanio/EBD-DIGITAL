@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, Class, Magazine, Comment, Attendance, Announcement } from './types';
 import Login from './components/Login';
@@ -88,15 +89,11 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // CRUCIAL: setDoc com { merge: true } funciona para criar (cadastro) e atualizar (aprovação)
   const handleUpdateUser = async (updatedUser: User) => {
     try {
       await setDoc(doc(db, 'users', updatedUser.id), { ...updatedUser }, { merge: true });
     } catch (e: any) {
       console.error("Erro ao salvar/atualizar usuário:", e);
-      if (e.code === 'permission-denied') {
-        alert("ERRO DE PERMISSÃO: O Firebase bloqueou a gravação. Verifique suas Rules.");
-      }
     }
   };
 
@@ -105,12 +102,8 @@ const App: React.FC = () => {
       const id = `c-${Date.now()}`;
       const newClass: Class = { id, name };
       await setDoc(doc(db, 'classes', id), newClass);
-      alert("Turma '" + name + "' criada com sucesso!");
     } catch (err: any) {
       console.error("Erro ao salvar turma:", err);
-      if (err.code === 'permission-denied') {
-        alert("ERRO DE PERMISSÃO: O Firebase bloqueou a gravação. Altere as regras (Rules) para 'allow read, write: if true;'.");
-      }
     }
   };
 
@@ -168,7 +161,8 @@ const App: React.FC = () => {
           />
         )}
 
-        <div className="flex-grow overflow-y-auto no-scrollbar">
+        {/* Container principal ajustado para flex-col e h-full quando o leitor está aberto */}
+        <div className={`flex-grow ${selectedMagId ? 'h-full flex flex-col' : 'overflow-y-auto no-scrollbar'}`}>
           {selectedMagId && activeMag ? (
             <MagazineReader 
               magazine={activeMag} 
