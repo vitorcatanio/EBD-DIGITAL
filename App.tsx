@@ -57,6 +57,21 @@ const App: React.FC = () => {
   const handleUpdateMagazine = async (m: Magazine) => await setDoc(doc(db, 'magazines', m.id), m);
   const handleUpdateUser = async (u: User) => await setDoc(doc(db, 'users', u.id), u, { merge: true });
 
+  // Chamada de Presença Persistente
+  const handleToggleAttendance = async (studentId: string, studentName: string, classId: string, isPresent: boolean) => {
+    const today = new Date().toISOString().split('T')[0];
+    const id = `att-${classId}-${studentId}-${today}`;
+    const attendance: Attendance = {
+      id,
+      classId,
+      userId: studentId,
+      userName: studentName,
+      date: today,
+      isPresent
+    };
+    await setDoc(doc(db, 'attendances', id), attendance);
+  };
+
   if (showIntro) return <Introduction onComplete={() => setShowIntro(false)} />;
   if (!currentUser) return <Login onLogin={setCurrentUser} onRegister={handleUpdateUser} users={users} classes={classes} />;
 
@@ -87,7 +102,7 @@ const App: React.FC = () => {
                 classes={classes} attendances={attendances} responses={userResponses} magazines={magazines.filter(m => m.classId === currentUser.classId)}
                 announcements={announcements.filter(a => a.classId === currentUser.classId)}
                 onAddAnnouncement={async (a) => await setDoc(doc(db, 'announcements', a.id), a)}
-                onToggleAttendance={async (sid, sn, cid, pr) => {}}
+                onToggleAttendance={handleToggleAttendance}
                 onApproveStudent={id => handleUpdateUser({ ...users.find(u => u.id === id)!, isApproved: true } as User)}
                 onRejectStudent={id => deleteDoc(doc(db, 'users', id))}
                 onUpdateUser={handleUpdateUser}
@@ -113,7 +128,12 @@ const App: React.FC = () => {
               />
             ) 
           ) : (
-            <Library magazines={magazines.filter(m => currentUser.role === 'editor' || m.classId === currentUser.classId)} onSelect={setSelectedMagId} user={currentUser} />
+            <Library 
+              magazines={magazines.filter(m => currentUser.role === 'editor' || m.classId === currentUser.classId)} 
+              onSelect={setSelectedMagId} 
+              user={currentUser}
+              attendances={attendances}
+            />
           )}
         </div>
       </main>
