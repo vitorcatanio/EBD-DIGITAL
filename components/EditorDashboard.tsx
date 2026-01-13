@@ -41,8 +41,9 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
-  // Função para converter link do Drive para link direto de download
   const convertDriveLink = (url: string) => {
+    if (!url) return '';
+    // Converte links de visualização para links de exportação direta (ajuda o PDF.js se houver permissão)
     if (url.includes('drive.google.com')) {
       const match = url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/);
       if (match && match[1]) {
@@ -76,7 +77,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
 
       if (selectedFile) {
         if (selectedFile.size > 1024 * 1024) {
-          throw new Error("Arquivo muito grande. Use um link do Google Drive.");
+          throw new Error("Arquivo local muito grande (>1MB). Use links externos.");
         }
         const arrayBuffer = await selectedFile.arrayBuffer();
         try {
@@ -96,7 +97,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
             }
           }
         } catch (e) {
-          console.error("Erro ao ler PDF local:", e);
+          console.warn("Erro ao ler PDF local via PDF.js.");
         }
 
         finalPdfUrl = await new Promise<string>((resolve) => {
@@ -104,32 +105,6 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
           reader.onloadend = () => resolve(reader.result as string);
           reader.readAsDataURL(selectedFile);
         });
-      } else if (pdfUrlInput) {
-        // Tentativa de ler PDF externo para pegar capa e número de páginas
-        // O Google Drive costuma bloquear isso (CORS), por isso o try/catch
-        try {
-          const resp = await fetch(finalPdfUrl);
-          if (resp.ok) {
-            const arrayBuffer = await resp.arrayBuffer();
-            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-            const pdf = await loadingTask.promise;
-            numPages = pdf.numPages;
-            if (!manualCover) {
-              const page = await pdf.getPage(1);
-              const viewport = page.getViewport({ scale: 0.5 });
-              const canvas = document.createElement('canvas');
-              const ctx = canvas.getContext('2d');
-              canvas.height = viewport.height;
-              canvas.width = viewport.width;
-              if (ctx) {
-                await page.render({ canvasContext: ctx, viewport }).promise;
-                coverUrl = canvas.toDataURL('image/jpeg', 0.5);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("CORS ou erro de rede ao ler PDF externo. Usando dados manuais.");
-        }
       }
 
       const pages: Page[] = [];
@@ -227,7 +202,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                  ))}
                </tbody>
              </table>
-             {magazines.length === 0 && <div className="py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-[0.2em]">Nenhum material postado</div>}
+             {magazines.length === 0 && <div className="py-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-[0.2em]">Biblioteca Vazia</div>}
           </div>
         </section>
       )}
@@ -243,7 +218,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
              <div className="space-y-4">
                <div>
                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título</label>
-                 <input required type="text" value={newMagTitle} onChange={e => setNewMagTitle(e.target.value)} placeholder="Lição 01 - Exemplo" className="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 ring-indigo-500 font-bold border border-slate-100 text-sm" />
+                 <input required type="text" value={newMagTitle} onChange={e => setNewMagTitle(e.target.value)} placeholder="Título da Lição" className="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 ring-indigo-500 font-bold border border-slate-100 text-sm" />
                </div>
 
                <div className="grid grid-cols-2 gap-4">
@@ -255,7 +230,7 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                    </select>
                  </div>
                  <div>
-                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Qtd. de Páginas</label>
+                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Aprox. de Páginas</label>
                    <input type="number" value={manualPageCount} onChange={e => setManualPageCount(e.target.value)} className="w-full bg-slate-50 p-4 rounded-xl outline-none border border-slate-100 font-bold text-sm" />
                  </div>
                </div>
@@ -269,23 +244,23 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                     <input type="file" ref={coverInputRef} hidden accept="image/*" onChange={handleManualCoverUpload} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-indigo-600 uppercase mb-1">Capa da Revista</p>
-                    <p className="text-[9px] text-slate-500 font-medium leading-tight">Carregue a imagem da capa aqui para garantir que ela apareça na biblioteca.</p>
+                    <p className="text-[10px] font-black text-indigo-600 uppercase mb-1">Imagem de Capa</p>
+                    <p className="text-[9px] text-slate-500 font-medium leading-tight">Carregue a capa para visualização na biblioteca.</p>
                   </div>
                </div>
 
                <div className="space-y-4 pt-2">
                  <div>
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Link do Google Drive / Dropbox</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Link do Google Drive / PDF Online</label>
                     <input 
                       type="url" 
                       value={pdfUrlInput} 
                       onChange={e => { setPdfUrlInput(e.target.value); setSelectedFile(null); }} 
-                      placeholder="Cole o link do Drive aqui" 
+                      placeholder="Cole o link do PDF aqui" 
                       className="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 ring-indigo-500 font-bold border border-slate-100 text-xs" 
                     />
                     <div className="mt-2 bg-amber-50 p-3 rounded-lg border border-amber-100">
-                       <p className="text-[9px] text-amber-700 font-bold leading-tight uppercase">Dica: O link deve ser do tipo "Qualquer pessoa com o link". Nós converteremos o link de "visualização" para "download" automaticamente.</p>
+                       <p className="text-[9px] text-amber-700 font-bold leading-tight uppercase">Dica: Se o arquivo estiver no Google Drive, certifique-se de que o acesso é "Qualquer pessoa com o link".</p>
                     </div>
                  </div>
                  
@@ -310,9 +285,9 @@ const EditorDashboard: React.FC<EditorDashboardProps> = ({
                  {isProcessing ? (
                    <>
                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                     <span>PUBLICANDO...</span>
+                     <span>CONCLUINDO...</span>
                    </>
-                 ) : 'SALVAR NO ACERVO'}
+                 ) : 'PUBLICAR MATERIAL'}
              </button>
           </form>
         </div>
